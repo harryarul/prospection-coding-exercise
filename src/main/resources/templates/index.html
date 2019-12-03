@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <link rel="stylesheet" media="screen" href="/stylesheets/main.css">
+    <link rel="shortcut icon" type="image/png" href="/images/favicon.png">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+
+    <script src="/js/analysis.service.js"></script>
+
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    
+    <script type="text/javascript">
+		
+        //google.load("visualization", "1", {packages: ["corechart", "table"]});
+        google.charts.load('current', {'packages':["corechart", "table", "timeline"]});
+
+		//chart with timeline labels		
+        google.setOnLoadCallback(function () {
+			var analyisResult;
+
+            function drawChart(data) {
+                var options = {
+                    title: 'B & I Analysis Result',
+                    pieHole: 0.4
+                };
+                var chart = new google.visualization.PieChart(document.getElementById('piechart'));
+
+				function selectHandler() {
+          			var selectedItem = chart.getSelection()[0];
+          			var patientDetails;
+					var violationMap = analyisResult.mapViolationDetails;
+          			//console.log(selectedItem);
+          			if (selectedItem) {
+            			var topping = data.getValue(selectedItem.row, 0);
+						document.getElementById('detailstable_div_heading').innerHTML = topping;
+						
+            			if(topping == 'Patients that violated by taking B and I together.') {
+            				patientDetails = analyisResult.violatedPatDetails;
+            			}
+            			if(topping == 'Patients that did not violate, because they never took B and I together.') {
+            				patientDetails = analyisResult.nocomedPatDetails;
+            			}
+            			if(topping == 'Patients that did not violate, because they switched from B to I.') {
+            				patientDetails = analyisResult.biSwitchPatDetails;
+            			}            			
+            			if(topping == 'Patients that did not violate, because they switched from I to B.') {
+            				patientDetails = analyisResult.ibSwitchPatDetails;
+            			}
+            			if(topping == 'Patients that did not violate, because they simply trialled I during B.') {
+            				patientDetails = analyisResult.iTrialPatDetails;
+            			}
+            			if(topping == 'Patients that did not violate, because they simply trialled B during I.') {
+            				patientDetails = analyisResult.bTrialPatDetails;
+            			}
+            			
+            			var rowsData = [];
+						var vDetails = '';
+                    	for (var key in patientDetails) {
+							for (var ckey in violationMap) {
+								if(key.trim() == ckey.trim()) {
+									vDetails = violationMap[ckey];
+									//console.log('vDetails ' + vDetails);
+									break;
+								}
+							}
+                    		rowsData.push([key, patientDetails[key], vDetails]);
+                    	}
+                    
+                    	var pdata = new google.visualization.DataTable();
+                    	pdata.addColumn('string', 'Patient');
+                    	pdata.addColumn('string', 'Details');
+						pdata.addColumn('string', 'Violation/Switch/Trail');
+                    	pdata.addRows(rowsData);
+                    	drawDetailsTable(pdata);
+            			
+          			}
+        		}
+
+        		google.visualization.events.addListener(chart, 'select', selectHandler); 
+
+                chart.draw(data, options);
+            }
+            
+            function drawTable(data) {
+                var table = new google.visualization.Table(document.getElementById('table_div'));
+                table.draw(data, {width: '90%', height: '100%'});
+            }
+            
+			function drawDetailsTable(pdata) {
+                var detailstable = new google.visualization.Table(document.getElementById('detailstable_div'));
+                detailstable.draw(pdata, {width: '90%', height: '100%'});
+				google.visualization.events.addListener(detailstable, 'select', selectHandler1);
+				
+				
+				function selectHandler1(e) {
+					var selectedRow = detailstable.getSelection()[0];
+					var patientId;
+					
+					var selection = detailstable.getSelection();
+					var message = '';
+					for (var i = 0; i < selection.length; i++) {
+						var item = selection[i];
+					
+						patientId = pdata.getFormattedValue(item.row, 0);
+						//console.log('You selected ' + patientId);
+					}
+
+					drawChartTimeline(patientId);
+
+				}
+            }                       
+
+            function drawChartTimeline(patientId) {
+				var testPat = analyisResult.testPatienttl;
+				
+				var listPatientTimeline;
+				var rowsData = [];
+				var tdata = new google.visualization.DataTable();
+				tdata.addColumn({ type: 'string', id: 'Patient' });
+				tdata.addColumn({ type: 'string', id: 'Name' });
+				tdata.addColumn({ type: 'date', id: 'Start' });
+				tdata.addColumn({ type: 'date', id: 'End' });
+				
+				for (var key in testPat) {
+					var pYear = 2018;
+					var pMonth = 01;
+					var pDay = 01;					
+
+					if(patientId == key) {
+						listPatientTimeline = testPat[key];
+						
+						for(let index = 0; index < listPatientTimeline.length; index++){
+							var pTimeline = listPatientTimeline[index];						
+							rowsData.push([pTimeline.medication, pTimeline.label, new Date(pYear, pMonth, pDay), new Date(pTimeline.endYear, pTimeline.endMonth, pTimeline.endDay)]);
+							//pYear = pTimeline.endYear;
+							//pMonth = pTimeline.endMonth;
+							//pDay = pTimeline.endDay;
+						}
+					}
+				}
+
+				tdata.addRows(rowsData);
+				
+				var options = {
+					height: 450,
+				};
+
+				var chartt = new google.visualization.Timeline(document.getElementById('patienttimeline_div'));
+
+				chartt.draw(tdata, options);
+			}    
+		
+			Analysis.getBIAnalysis(
+                function success(result) {
+                    var rows = [];
+
+                    var patients = result.patients;
+                    for (var key in patients) {
+                        if (patients.hasOwnProperty(key)) {
+                            rows.push([result.patientTypeNameMap[key], patients[key]])
+                        }
+                    }
+
+                    var data = new google.visualization.DataTable();
+                    data.addColumn('string', 'Patient Type');
+                    data.addColumn('number', 'Count');
+                    data.addRows(rows);
+
+                    //patientDetails = result.patientDetails;
+                    analyisResult = result;
+ 
+                    drawChart(data);
+                    drawTable(data);                                      
+                },
+                function failure() {
+                    toastr.error('Oops, failed to load analysis result.');
+                }
+            );
+            
+        });
+
+    </script>
+    
+</head>
+<body>
+<p>
+    <img src="images/cat.png" height="42" width="42">
+    <span class="greeting">O Hai,</span>
+    <span class="sub-greeting">according to your calculations... </span>
+</p>
+<div id="table_div"></div>
+
+<p>
+    <img src="images/cat.png" height="42" width="42">
+    <span class="greeting">Here,</span>
+    <span class="sub-greeting">have a donut...</span>
+</p>
+<div id="piechart"></div>
+
+<p>
+    <img src="images/cat.png" height="42" width="42">
+    <span class="greeting">Details,</span>
+    <span class="sub-greeting">For </span>
+</p>
+<div id="detailstable_div_heading" style="height: 30px;"></div>
+<div id="detailstable_div"></div>
+
+<p>
+    <img src="images/cat.png" height="42" width="42">
+    <span class="greeting">Timeline,</span>
+    <span class="sub-greeting">For each Patient...</span>
+</p>
+<div id="patienttimeline_div"></div>
+
+</body>
+</html>
